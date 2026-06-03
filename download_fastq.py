@@ -13,7 +13,6 @@ import argparse
 import os
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -49,13 +48,6 @@ def parse_args():
         default=None,
         metavar="N",
         help="Only download the first N matched cell lines",
-    )
-    p.add_argument(
-        "--workers",
-        type=int,
-        default=4,
-        metavar="N",
-        help="Number of parallel download workers (default: 4)",
     )
     p.add_argument(
         "--dry-run",
@@ -216,8 +208,7 @@ def main():
         for url in urls:
             tasks.append((f"{stripped}/{run_acc}", run_acc, url))
 
-    print(f"\n  {len(tasks)} file(s) to download across {len(matched)} run(s) "
-          f"using {args.workers} worker(s)\n")
+    print(f"\n  {len(tasks)} file(s) to download across {len(matched)} run(s)\n")
 
     if args.dry_run:
         for label, run_acc, url in tasks:
@@ -227,20 +218,13 @@ def main():
         return
 
     errors = []
-    completed = 0
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        future_to_task = {
-            executor.submit(download_file, url, args.outdir): (label, run_acc, url)
-            for label, run_acc, url in tasks
-        }
-        for future in as_completed(future_to_task):
-            label, run_acc, url = future_to_task[future]
-            status = future.result()
-            completed += 1
-            filename = url.split("/")[-1]
-            print(f"  [{completed}/{len(tasks)}] {filename} ({label}) — {status}")
-            if status == "failed":
-                errors.append((run_acc, url))
+    for i, (label, run_acc, url) in enumerate(tasks, 1):
+        filename = url.split("/")[-1]
+        print(f"  [{i}/{len(tasks)}] {filename} ({label})")
+        status = download_file(url, args.outdir)
+        print(f"    → {status}")
+        if status == "failed":
+            errors.append((run_acc, url))
 
     # Summary
     print()
